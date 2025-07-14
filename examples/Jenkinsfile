@@ -1,0 +1,124 @@
+pipeline {
+    agent {
+        kubernetes {
+            yaml '''
+                apiVersion: v1
+                kind: Pod
+                metadata:
+                  labels:
+                    app: jenkins-agent
+                spec:
+                  containers:
+                  - name: maven
+                    image: maven:3.9-amazoncorretto-17
+                    command:
+                    - cat
+                    tty: true
+                  - name: build-analyzer
+                    image: build-analyzer:latest
+                    command:
+                    - cat
+                    tty: true
+                    env:
+                    - name: AWS_REGION
+                      valueFrom:
+                        configMapKeyRef:
+                          name: aws-config
+                          key: region
+                    - name: AWS_ACCESS_KEY_ID
+                      valueFrom:
+                        secretKeyRef:
+                          name: aws-credentials
+                          key: access-key
+                    - name: AWS_SECRET_ACCESS_KEY
+                      valueFrom:
+                        secretKeyRef:
+                          name: aws-credentials
+                          key: secret-key
+            '''
+        }
+    }
+    
+    stages {
+        stage('Build') {
+            steps {
+                container('maven') {
+                    sh 'mvn clean install'
+                }
+            }
+        }
+        
+        stage('Test') {
+            steps {
+                container('maven') {
+                    sh 'mvn test'
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            container('build-analyzer') {
+                script {
+                    def analysis = analyze()
+                    if (analysis.hasSuggestions) {
+                        echo "Build Analysis Results:"
+                        echo analysis.summary
+                        
+                        if (currentBuild.result == 'FAILURE') {
+                            echo "Failure Analysis:"
+                            echo analysis.recommendations.join('\n')
+                        }
+                    }
+                }
+            }
+        }
+        failure {
+            container('build-analyzer') {
+                script {
+                    def detailedAnalysis = analyzeFailure()
+                    emailext(
+                        subject: "Build Failure Analysis: ${currentBuild.fullDisplayName}",
+                        body: detailedAnalysis.emailBody,
+                        to: '${DEFAULT_RECIPIENTS}'
+                    )
+                }
+            }
+        }
+    }
+}
+
+def analyze() {
+    def response = sh(
+        script: '''
+            curl -X POST http://build-analyzer.default.svc.cluster.local/api/v1/analyze \
+                -H "Content-Type: application/json" \
+                -d "{
+                    'jobName': '${JOB_NAME}',
+                    'buildNumber': ${BUILD_NUMBER},
+                    'result': '${currentBuild.result}',
+                    'workspace': '${WORKSPACE}'
+                }"
+        ''',
+        returnStdout: true
+    )
+    return readJSON(text: response)
+}
+
+def analyzeFailure() {
+    def response = sh(
+        script: '''
+            curl -X POST http://build-analyzer.default.svc.cluster.local/api/v1/analyze/failure \
+                -H "Content-Type: application/json" \
+                -d "{
+                    'jobName': '${JOB_NAME}',
+                    'buildNumber': ${BUILD_NUMBER},
+                    'lastSuccessfulBuild': ${currentBuild.previousSuccessfulBuild?.number},
+                    'workspace': '${WORKSPACE}'
+                }"
+        ''',
+        returnStdout: true
+    )
+    return readJSON(text: response)
+}

@@ -1,0 +1,27 @@
+[project]
+name = "jenkins-build-analyzer"
+version = "0.1.0"
+description = "A Jenkins agent that uses Amazon Bedrock LLM to analyze build errors"
+authors = []
+license = "MIT"
+readme = "README.md"
+requires-python = ">=3.9"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.black]
+line-length = 88
+target-version = ["py39"]
+include = '\.pyi?$'
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+asyncio_mode = "auto"
+addopts = "--cov=app --cov-report=term-missing -v"

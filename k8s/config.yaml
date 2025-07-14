@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: analyzer-config
+data:
+  config.yaml: |
+    log_level: INFO
+    analysis_timeout: 300
+    max_retries: 3
+    batch_size: 100
+    cache_ttl: 3600
+    metrics_enabled: true
+    
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jenkins-config
+data:
+  jenkins-url: http://jenkins.default.svc.cluster.local:8080
+  
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aws-config
+data:
+  region: us-west-2
+  bedrock-model-id: anthropic.claude-v2
